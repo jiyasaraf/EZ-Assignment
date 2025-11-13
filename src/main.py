@@ -540,7 +540,7 @@ if 'toast_message' in st.session_state and st.session_state.toast_message:
 
 # --- Sidebar UI ---
 with st.sidebar:
-    st.title("📚 Smart Assistant")
+    st.title("DocuMind")
     st.markdown("---")
 
     # Dark Mode Toggle Button - REMOVED

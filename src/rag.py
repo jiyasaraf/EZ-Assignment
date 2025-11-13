@@ -34,6 +34,14 @@ class SentenceTransformerChromaEmbeddingFunction:
         """
         return self._model_name
 
+    def embed_documents(self, documents: List[str]) -> List[List[float]]:
+        return self.model.encode(documents).tolist()
+
+    def embed_query(self, input) -> List[float] | List[List[float]]:
+        if isinstance(input, str):
+            return self.model.encode([input]).tolist()[0]
+        return self.model.encode(input).tolist()
+
 class DocumentRag:
     def __init__(self, persist_directory: str = "./chroma_db"):
         """

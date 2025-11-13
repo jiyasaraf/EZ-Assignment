@@ -8,3 +8,4 @@ Pillow
 pdf2image
 sentence-transformers
 einops
+PyPDF2
