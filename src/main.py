@@ -24,7 +24,7 @@ if 'document_rag' not in st.session_state:
 # --- Streamlit UI Configuration ---
 st.set_page_config(
     layout="wide",
-    page_title="Smart Assistant",
+    page_title="DocuMind",
     initial_sidebar_state="expanded"
 )
 
@@ -59,6 +59,8 @@ if 'current_panel' not in st.session_state:
     st.session_state.current_panel = 'summary' # Default panel to show
 if 'is_new_chat_flow' not in st.session_state:
     st.session_state.is_new_chat_flow = True # Flag to indicate if we are in a fresh new chat session
+if 'show_search' not in st.session_state:
+    st.session_state.show_search = False
 
 
 # --- Chat Session Management Functions ---
@@ -83,6 +85,12 @@ def save_chat_session(chat_id, chat_name, document_name, full_document_text, sum
     }
     st.session_state.document_rag.save_chat_metadata(chat_id, chat_data)
     print(f"DEBUG: Chat session '{chat_name}' ({chat_id}) saved/updated in ChromaDB.")
+
+# Function to update only the ask_history for an existing chat
+def update_ask_history(chat_id, ask_history):
+    """Updates just the ask_history in the chat metadata."""
+    st.session_state.document_rag.update_chat_metadata(chat_id, {"ask_history": ask_history})
+    print(f"DEBUG: Updated ask_history for chat {chat_id}.")
 
 # Function to load a specific chat session
 def load_chat_session(chat_data):
@@ -177,7 +185,7 @@ st.markdown(
         --panel-bg: #ffffff; /* Light mode main panel background */
         --border-color: #e0e0e0; /* Light mode borders */
         --input-bg: #f9f9f9; /* Light mode input/textarea background */
-        --chat-user-bg: #dcf8c6; /* Light mode user chat bubble */
+        --chat-user-bg: #ADD8E6; /* Light blue user chat bubble */
         --chat-ai-bg: #e0e0e0; /* Light mode AI chat bubble */
         --header-bg: #ffffff; /* Light mode header background */
         --active-chat-bg: #e6f7ff; /* Light mode active chat highlight */
@@ -192,7 +200,7 @@ st.markdown(
         --panel-bg: #1a1a2e;
         --border-color: #3a3a5a;
         --input-bg: #2a2a4a;
-        --chat-user-bg: #4CAF50;
+        --chat-user-bg: #ADD8E6;
         --chat-ai-bg: #3a3a5a;
         --header-bg: #1a1a2e;
         --active-chat-bg: #2a2a4a;
@@ -237,10 +245,16 @@ st.markdown(
         box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
     } */
 
+    /* Make sidebar content scrollable and hide the toggle button */
+    div[data-testid="stSidebarUserContent"] {
+        display: flex;
+        flex-direction: column;
+        height: 95vh; /* Adjust height to fit viewport */
+    }
     /* General button styling (targets Streamlit's native buttons) */
     .stButton > button {
-        background-color: #4CAF50; /* Green */
-        color: white;
+        background-color: #ADD8E6; /* Green */
+        color: #333333;
         border-radius: 0.75rem;
         padding: 0.75rem 1.25rem;
         font-weight: 600;
@@ -248,13 +262,20 @@ st.markdown(
         border: none;
     }
     .stButton > button:hover {
-        background-color: #45a049;
-        box_shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        background-color: #e0e0e0; /* Light grey hover */
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .stButton > button:disabled {
         background-color: #cccccc;
         cursor: not-allowed;
         box-shadow: none;
+    }
+    /* Specific styling for the download button */
+    div[data-testid="stDownloadButton"] > button {
+        background-color: #ADD8E6; /* Light Blue */
+        color: #333333 !important; /* Dark text for readability */
+        border: 1px solid #ADD8E6 !important;
+        background-color: #ADD8E6 !important; /* Light Blue */
     }
 
     /* Sidebar navigation buttons specific styling */
@@ -275,20 +296,38 @@ st.markdown(
     } */
     /* Active sidebar button styling (Streamlit's primary button style when selected) */
     div[data-testid="stSidebarNav"] .stButton > button[data-testid="stSidebarNav"] {
-        background-color: #4CAF50;
+        background-color: #ADD8E6;
         color: white;
         box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
     }
 
 
     /* File uploader button styling */
+    div[data-testid="stFileUploader"] {
+        background-color: #ffffff;
+        color: #333333;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 1.25rem;
+        max-width: 700px;
+        margin: 0 auto;
+    }
+    /* Remove dark inner backgrounds and hide default label */
+    div[data-testid="stFileUploader"] label { display: none !important; }
+    div[data-testid="stFileUploader"] div { background-color: transparent !important; }
+    div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+        background-color: #f9fafb !important;
+        border: 1px dashed #d1d5db !important;
+        border-radius: 10px !important;
+        padding: 2.25rem 1rem !important;
+    }
     div[data-testid="stFileUploader"] button {
         background-color: #007bff;
         color: white;
+        display: block;
+        margin: 0.75rem auto 0;
     }
-    div[data-testid="stFileUploader"] button:hover {
-        background-color: #0056b3;
-    }
+    div[data-testid="stFileUploader"] button:hover { background-color: #0056b3; }
 
     /* Chat message styling */
     .chat-message {
@@ -322,7 +361,7 @@ st.markdown(
         transition: border-color 0.2s, box-shadow 0.2s;
     }
     textarea:focus, input[type="text"]:focus {
-        border-color: #4CAF50;
+        border-color: #ADD8E6;
         box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.3);
         outline: none;
     }
@@ -346,7 +385,7 @@ st.markdown(
 
     /* For the spinner */
     .stSpinner > div > div {
-        border-top-color: #4CAF50;
+        border-top-color: #ADD8E6;
     }
 
     /* Adjust padding for the main content area to make it full width */
@@ -367,21 +406,36 @@ st.markdown(
     }
     /* Add content for the arrow symbols using ::before or ::after */
     button[data-testid="stSidebarToggle"]::before {
-        content: '«'; /* Left arrow for collapse */
+        content: '›'; /* Right arrow for expand (open) */
         font-size: 1.5rem;
         line-height: 1;
         display: inline-block;
         vertical-align: middle;
         color: var(--text-color); /* Ensure arrow color changes with theme */
         visibility: visible; /* Make the pseudo-element visible */
-        width: auto; /* Allow content to dictate width */
+        width: auto;
         padding: 0; /* Remove padding if any */
         margin: 0; /* Remove margin if any */
     }
-    /* When sidebar is expanded, change to right arrow */
+    /* When sidebar is expanded, change to left arrow for collapse (close) */
     div[data-testid="stSidebar"][aria-expanded="true"] button[data-testid="stSidebarToggle"]::before {
-        content: '»' !important; /* Right arrow for expand */
+        content: '‹' !important; color: var(--text-color) !important; /* Left arrow for collapse, ensure color is applied */
     }
+
+    /* Hide the sidebar toggle button to make it static */
+    button[data-testid="stSidebarToggle"] {
+        display: none;
+    }
+    section[data-testid="stSidebar"] {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        overflow-y: auto;
+    }
+    .chat-menu { padding: 0 0.5rem 0.5rem 0.5rem; }
+    .chat-menu .stButton > button { background-color: #eaf4ff; color: #333333; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 0.25rem 0.5rem; }
+    .chat-menu .stButton > button:hover { background-color: #dcecff; }
 
     /* Style for the copy icon */
     .copy-icon {
@@ -389,24 +443,50 @@ st.markdown(
         margin-left: 10px;
         font-size: 1.2em;
         vertical-align: middle;
-        color: var(--text-color); /* Inherit text color */
+        color: #e5e7eb;
         transition: color 0.2s;
     }
-    .copy-icon:hover {
-        color: #4CAF50; /* Green on hover */
+    .copy-icon:hover { color: #9ca3af; }
+
+    /* Sidebar text-style clickable items */
+    .sidebar-brand { font-size: 1rem; font-weight: 700; padding: 0.75rem 0.75rem; color: #ffffff; }
+    .sidebar-actions .stButton > button,
+    .sidebar-nav .stButton > button {
+        background-color: transparent; color: #e5e7eb; text-align: left; border-radius: 0.35rem; padding: 0.4rem 0.6rem; border: 1px solid transparent; font-weight: 500;
     }
+    .sidebar-chats .stButton > button {
+        background-color: transparent;
+        color: #333333;
+        border-radius: 0.6rem;
+        padding: 0.35rem;
+        border: 1px solid var(--border-color);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        min-width: 36px;
+        min-height: 36px;
+    }
+    .sidebar-actions .stButton > button:hover,
+    .sidebar-nav .stButton > button:hover,
+    .sidebar-chats .stButton > button:hover { background-color: #1a1a1a; color: #e5e7eb; }
+    .sidebar-section-title { display:flex; align-items:center; gap:0.5rem; padding: 0.5rem 0.75rem; color: #e5e7eb; font-weight:600; }
+    .sidebar-section-title .hr { flex:1; height:1px; background:#2a2a2a; }
+    .hr-line { height:1px; background:#2a2a2a; margin: 0.5rem 0; }
 
     /* Chat item in sidebar */
     .chat-item {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
+        justify-content: flex-start; /* Align items to the start */
+        gap: 0.5rem; /* Add space between items */
+        padding: 0.5rem 0.75rem;
         margin-bottom: 0.5rem;
         border-radius: 0.75rem;
         cursor: pointer;
         transition: background-color 0.2s;
-        color: var(--text-color);
+        color: var(--text-color); /* Use theme text color */
         border: 1px solid transparent; /* Default transparent border */
     }
     .chat-item:hover {
@@ -416,24 +496,27 @@ st.markdown(
     /* .dark-mode .chat-item:hover {
         background-color: #2a2a4a;
     } */
-    .chat-item.active {
-        background-color: var(--active-chat-bg);
-        border: 1px solid #4CAF50; /* Green border for active chat */
-        font-weight: 600;
-    }
+    .chat-item.active { background-color: #1f1f1f; border: 1px solid transparent; font-weight: 600; }
     .chat-item-text {
         flex-grow: 1;
         white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
+        text-overflow: ellipsis; /* Add ellipsis for long text */
+    }
+    .chat-item-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        margin-left: auto; /* Push actions to the far right */
+        flex-shrink: 0; /* Prevent shrinking */
     }
     .chat-item-delete {
-        margin-left: 10px;
         color: var(--delete-icon-color);
         cursor: pointer;
         font-size: 1.1em;
         opacity: 0.7;
         transition: opacity 0.2s;
+        padding: 0.25rem;
     }
     .chat-item-delete:hover {
         opacity: 1;
@@ -540,8 +623,19 @@ if 'toast_message' in st.session_state and st.session_state.toast_message:
 
 # --- Sidebar UI ---
 with st.sidebar:
-    st.title("DocuMind")
-    st.markdown("---")
+    st.markdown("<div class='sidebar-brand'>DocuMind</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-actions'>", unsafe_allow_html=True)
+    if st.button("➕ New chat", key="nav_new_chat", use_container_width=True):
+        start_new_chat()
+    if st.button("🔍 Search chats", key="toggle_search", use_container_width=True):
+        st.session_state.show_search = not st.session_state.show_search
+    if st.session_state.show_search:
+        search_query = st.text_input("Search", key="chat_search", placeholder="Search chats")
+    else:
+        search_query = ""
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div class='hr-line'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-section-title'><span>Features</span><span class='hr'></span></div>", unsafe_allow_html=True)
 
     # Dark Mode Toggle Button - REMOVED
     # if st.button(f"{'☀️ Light Mode' if st.session_state.dark_mode else '🌙 Dark Mode'}", key="dark_mode_toggle"):
@@ -549,19 +643,17 @@ with st.sidebar:
     
     # st.markdown("---")
 
-    # New Chat Button
-    if st.button("➕ New Chat", key="new_chat_button"):
-        start_new_chat()
+    
 
     # st.markdown("---")
     # st.header("Navigation")
     # Navigation buttons using st.button for reliability
     
+    st.markdown("<div class='sidebar-nav'>", unsafe_allow_html=True)
     nav_container = st.container()
     with nav_container:
         # Summary Button
-        summary_button_clicked = st.button("📄 Summary", key="nav_summary", 
-                                           type="primary" if st.session_state.current_panel == 'summary' else "secondary")
+        summary_button_clicked = st.button("📄 Summary", key="nav_summary", use_container_width=True)
         if summary_button_clicked:
             if st.session_state.current_panel != 'summary':
                 st.session_state.current_panel = 'summary'
@@ -569,8 +661,7 @@ with st.sidebar:
                 st.rerun()
 
         # Ask Me Button
-        ask_button_clicked = st.button("💬 Ask Me", key="nav_ask", 
-                                       type="primary" if st.session_state.current_panel == 'ask' else "secondary")
+        ask_button_clicked = st.button("💬 Ask AI", key="nav_ask", use_container_width=True)
         if ask_button_clicked:
             if st.session_state.current_panel != 'ask':
                 st.session_state.current_panel = 'ask'
@@ -578,97 +669,31 @@ with st.sidebar:
                 st.rerun()
 
         # Challenge Me Button
-        challenge_button_clicked = st.button("🧠 Challenge Me", key="nav_challenge", 
-                                             type="primary" if st.session_state.current_panel == 'challenge' else "secondary")
+        challenge_button_clicked = st.button("🧠 Challenge Me", key="nav_challenge", use_container_width=True)
         if challenge_button_clicked:
             if st.session_state.current_panel != 'challenge':
                 st.session_state.current_panel = 'challenge'
                 print("DEBUG: Switched to Challenge Me panel.")
                 st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-    st.markdown("---")
-    st.header("Upload Document")
-    # Only allow document upload if it's a new chat or no document is linked to current chat
-    # The uploader should only appear if the current chat is new AND has no file yet.
-    if st.session_state.is_new_chat_flow and not st.session_state.uploaded_file_name:
-        uploaded_file = st.file_uploader("Upload your document (PDF or TXT)", type=["pdf", "txt"], key="main_file_uploader")
-    else:
-        # If it's an existing chat or a new chat with an already uploaded file, show info and disable uploader
-        if st.session_state.uploaded_file_name:
-            st.info(f"Document: '{st.session_state.uploaded_file_name}'")
-        uploaded_file = None # Ensure uploaded_file is None if uploader is not shown
-
-    if uploaded_file:
-        # This block executes only when a new file is uploaded via the uploader
-        # It will only be triggered for a new chat session that doesn't have a document yet
-        st.session_state.uploaded_file_name = uploaded_file.name
-        st.success(f"Document '{uploaded_file.name}' uploaded successfully!")
-        print(f"DEBUG: Uploaded file: {uploaded_file.name}")
-
-        # Create a temporary file path and write the uploaded content to it
-        fd, temp_file_path = tempfile.mkstemp(suffix=f".{uploaded_file.type.split('/')[-1]}")
-        file_type = uploaded_file.type.split('/')[-1]
-        if file_type == 'plain': # Handle common MIME type for .txt
-            file_type = 'txt'
-
-        try:
-            with os.fdopen(fd, 'wb') as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-            
-            # Process document and add embeddings
-            with st.spinner("Processing document and generating embeddings..."):
-                processed_chunks = process_document(temp_file_path, file_type)
-                if processed_chunks:
-                    # Add chat_id to metadata for ChromaDB
-                    metadatas = [{"source": uploaded_file.name, "chunk_index": i, "chat_id": st.session_state.current_chat_id} for i in range(len(processed_chunks))]
-                    st.session_state.document_rag.add_documents(processed_chunks, chat_id=st.session_state.current_chat_id, metadatas=metadatas)
-                    st.session_state.full_document_text = " ".join(processed_chunks) # Store full text for summary/challenge
-                    st.success("Document processed and embeddings stored!")
-                    print(f"DEBUG: Processed {len(processed_chunks)} chunks for chat {st.session_state.current_chat_id}.")
-
-                    with st.spinner("Generating summary..."):
-                        summary = generate_summary_with_gemini(st.session_state.full_document_text)
-                        st.session_state.summary = summary
-                        st.success("Summary generated!")
-                        print("DEBUG: Summary generated.")
-                    
-                    # Save the new chat session with document details to ChromaDB
-                    save_chat_session(
-                        st.session_state.current_chat_id,
-                        st.session_state.current_chat_name,
-                        st.session_state.uploaded_file_name,
-                        st.session_state.full_document_text,
-                        st.session_state.summary,
-                        st.session_state.ask_history, # Empty history for new chat
-                        len(processed_chunks)
-                    )
-                    fetch_all_chats() # Refresh the sidebar chat list to include the new chat
-                    st.session_state.current_panel = 'summary' # Switch to summary after upload
-                    st.session_state.is_new_chat_flow = False # No longer a new chat after upload
-                    st.rerun() # Rerun to update main content
-                else:
-                    st.error("Failed to process document. Please check the file format and content.")
-                    st.session_state.uploaded_file_name = None # Reset file name on failure
-                    st.session_state.full_document_text = "" # Clear text on failure
-                    st.session_state.summary = "" # Clear summary on failure
-                    print("ERROR: Document processing failed.")
-        except Exception as e:
-            st.error(f"Error saving or processing uploaded file: {e}")
-            st.session_state.uploaded_file_name = None # Reset file name on failure
-            st.session_state.full_document_text = "" # Clear text on failure
-            st.session_state.summary = "" # Clear summary on failure
-            print(f"ERROR: Exception during file processing: {e}")
-        finally:
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+    st.markdown("<div class='hr-line'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-section-title'><span>Past Chats</span><span class='hr'></span></div>", unsafe_allow_html=True)
 
 
-    st.markdown("---")
-    st.header("Past Chats")
     # Display list of past chats
-    if st.session_state.chats:
-        for chat in st.session_state.chats:
+    st.markdown("""
+        <div class='sidebar-chats' style='flex-grow: 1; overflow-y: auto; padding-right: 10px;'>
+    """, unsafe_allow_html=True)
+
+    
+    chats_source = st.session_state.chats if st.session_state.chats else []
+    if search_query:
+        sq = search_query.strip().lower()
+        chats_source = [c for c in chats_source if sq in c.get("name", "").lower()]
+    if chats_source:
+        for chat in chats_source:
             chat_id = chat["chat_id"]
             chat_name = chat["name"]
             doc_name = chat["document_name"] if chat["document_name"] else "No Document"
@@ -677,35 +702,52 @@ with st.sidebar:
 
             is_active = (chat_id == st.session_state.current_chat_id)
             
-            # Use columns for chat item and delete button
-            col1, col2 = st.columns([4, 1])
+            # Use st.columns to layout the chat item and its action buttons
+            # The main button takes up most of the space, and the action buttons are small
+            col1, col2 = st.columns([0.88, 0.12])
+
             with col1:
-                # Custom HTML for clickable chat item with unique key
-                st.markdown(
-                    f"""
-                    <div class="chat-item {'active' if is_active else ''}" id="chat_item_{chat_id}">
-                        <span class="chat-item-text">
-                            {chat_name} <br> <small style="opacity: 0.7;">({doc_name} - {chat_timestamp})</small>
-                        </span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-                # Use a hidden button to capture the click event from the custom HTML
-                # This is a common Streamlit workaround for custom clickable elements
-                if st.button("Load", key=f"load_chat_hidden_{chat_id}", help="Click to load this chat", use_container_width=True):
-                    # Load the full chat data from ChromaDB metadata collection
-                    loaded_chat_data = st.session_state.document_rag.load_chat_metadata(chat_id)
-                    if loaded_chat_data:
-                        load_chat_session(loaded_chat_data)
+                if st.button(f"{chat_name}", key=f"load_chat_{chat_id}", use_container_width=True):
+                    chat_data_to_load = st.session_state.document_rag.load_chat_metadata(chat_id)
+                    if chat_data_to_load:
+                        load_chat_session(chat_data_to_load)
                     else:
-                        st.error("Failed to load chat data from local storage.")
+                        st.error("Failed to load chat data.")
+
             with col2:
-                # Delete button for each chat
-                if st.button("🗑️", key=f"delete_chat_{chat_id}", help="Delete this chat session"):
-                    delete_chat_session(chat_id)
+                if st.button("⋮", key=f"menu_chat_{chat_id}", use_container_width=True):
+                    st.session_state[f"show_menu_{chat_id}"] = not st.session_state.get(f"show_menu_{chat_id}", False)
+
+            if st.session_state.get(f"show_menu_{chat_id}", False):
+                st.markdown("<div class='chat-menu'>", unsafe_allow_html=True)
+                m1, m2 = st.columns([0.5, 0.5])
+                with m1:
+                    if st.button("Rename", key=f"menu_rename_{chat_id}", use_container_width=True):
+                        st.session_state[f"renaming_{chat_id}"] = True
+                        st.session_state[f"show_menu_{chat_id}"] = False
+                with m2:
+                    if st.button("Delete", key=f"menu_delete_{chat_id}", use_container_width=True):
+                        delete_chat_session(chat_id)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # Logic for renaming a chat
+            if st.session_state.get(f"renaming_{chat_id}"):
+                new_name = st.text_input("Rename", value=chat_name, key=f"rename_input_{chat_id}")
+                rcol1, rcol2 = st.columns([1,1])
+                if rcol1.button("Save", key=f"save_rename_{chat_id}"):
+                    st.session_state.document_rag.update_chat_metadata(chat_id, {"name": new_name})
+                    if st.session_state.current_chat_id == chat_id:
+                        st.session_state.current_chat_name = new_name
+                    fetch_all_chats()
+                    st.session_state[f"renaming_{chat_id}"] = False
+                    st.rerun()
+                if rcol2.button("Cancel", key=f"cancel_rename_{chat_id}"):
+                    st.session_state[f"renaming_{chat_id}"] = False
     else:
         st.info("No past chats yet. Start a new one by uploading a document!")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div class='hr-line'></div>", unsafe_allow_html=True)
+    st.header("Upload Document")
     
     # User ID is no longer directly from Firebase auth, can be removed or simplified
     # For local storage, a fixed identifier or simply omitting it is fine.
@@ -741,15 +783,54 @@ with main_content_container:
 
     # Conditional display based on document presence and new chat flow
     if not st.session_state.full_document_text and (st.session_state.is_new_chat_flow or not st.session_state.uploaded_file_name):
-        st.info("Start a new chat by uploading a document from the sidebar.")
-        st.markdown("""
-            <div style="text-align: center; margin-top: 50px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: #6c757d;">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
-                </svg>
-                <p style="color: #6c757d; margin-top: 10px; font-size: 1.1rem;">Upload a document to get started!</p>
-            </div>
-        """, unsafe_allow_html=True)
+        st.info("Start a new chat by uploading a document.")
+        c1, c2, c3 = st.columns([1,2,1])
+        with c2:
+            center_uploader = st.file_uploader("", type=["pdf", "txt"], key="center_file_uploader", label_visibility="collapsed")
+        if center_uploader:
+            st.session_state.uploaded_file_name = center_uploader.name
+            fd, temp_file_path = tempfile.mkstemp(suffix=f".{center_uploader.type.split('/')[-1]}")
+            file_type = center_uploader.type.split('/')[-1]
+            if file_type == 'plain':
+                file_type = 'txt'
+            try:
+                with os.fdopen(fd, 'wb') as tmp_file:
+                    tmp_file.write(center_uploader.getvalue())
+                with st.spinner("Processing document and generating embeddings..."):
+                    processed_chunks = process_document(temp_file_path, file_type)
+                    if processed_chunks:
+                        metadatas = [{"source": center_uploader.name, "chunk_index": i, "chat_id": st.session_state.current_chat_id} for i in range(len(processed_chunks))]
+                        st.session_state.document_rag.add_documents(processed_chunks, chat_id=st.session_state.current_chat_id, metadatas=metadatas)
+                        st.session_state.full_document_text = " ".join(processed_chunks)
+                        with st.spinner("Generating summary..."):
+                            summary = generate_summary_with_gemini(st.session_state.full_document_text)
+                            st.session_state.summary = summary
+                        save_chat_session(
+                            st.session_state.current_chat_id,
+                            st.session_state.current_chat_name,
+                            st.session_state.uploaded_file_name,
+                            st.session_state.full_document_text,
+                            st.session_state.summary,
+                            st.session_state.ask_history,
+                            len(processed_chunks)
+                        )
+                        fetch_all_chats()
+                        st.session_state.current_panel = 'summary'
+                        st.session_state.is_new_chat_flow = False
+                        st.rerun()
+                    else:
+                        st.error("Failed to process document.")
+                        st.session_state.uploaded_file_name = None
+                        st.session_state.full_document_text = ""
+                        st.session_state.summary = ""
+            except Exception as e:
+                st.error(f"Error saving or processing uploaded file: {e}")
+                st.session_state.uploaded_file_name = None
+                st.session_state.full_document_text = ""
+                st.session_state.summary = ""
+            finally:
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
     else: # Document is loaded for the current chat
         if st.session_state.current_panel == 'summary':
             st.markdown(f"""
@@ -784,7 +865,7 @@ with main_content_container:
                             <p><strong>You:</strong> {q}</p>
                         </div>
                         <div class="chat-message ai-message">
-                            <p><strong>Smart Assistant:</strong> {a}</p>
+                            <p><strong>DocuMind:</strong> {a}</p>
                             {f'<p style="font-size: 0.85em; opacity: 0.8; margin-top: 5px;"><strong>Justification:</strong> {j}</p>' if j else ''}
                         </div>
                     """, unsafe_allow_html=True)
@@ -817,20 +898,10 @@ with main_content_container:
                         st.session_state.ask_history.append({'question': user_question, 'answer': answer, 'justification': justification})
                         st.session_state.ask_question_input_value = "" # Clear the input box after submission
                         
-                        # Update chat history in ChromaDB for the current chat_id
-                        # Corrected: Use get() with where clause to retrieve IDs and then count them
-                        # ChromaDB's get() method returns a dictionary with 'ids' key
-                        retrieved_ids = st.session_state.document_rag.document_chunks_collection.get(where={"chat_id": st.session_state.current_chat_id})['ids']
-                        current_chunk_count = len(retrieved_ids)
-
-                        save_chat_session(
+                        # More efficient: only update the ask history, not the whole document
+                        update_ask_history(
                             st.session_state.current_chat_id,
-                            st.session_state.current_chat_name,
-                            st.session_state.uploaded_file_name,
-                            st.session_state.full_document_text,
-                            st.session_state.summary,
                             st.session_state.ask_history, # Save the updated history
-                            current_chunk_count
                         )
                         st.rerun() # Rerun to update chat history display
                 else:
@@ -858,14 +929,16 @@ with main_content_container:
                                 <p style="font-weight: 600; font-size: 1.1em; color: var(--text-color); margin-bottom: 0.75rem;">Question {i+1}: {q}</p>
                         """, unsafe_allow_html=True)
 
-                        # Use a unique key for each text_area to prevent issues on re-render
-                        st.session_state.user_answers[i] = st.text_area(
-                            f"Your Answer for Q{i+1}:",
-                            value=st.session_state.user_answers[i],
-                            key=f"user_answer_{i}",
-                            height=100,
-                            placeholder="Type your answer here..."
-                        )
+                        # Visible answer box label and input below each question
+                        answer_box = st.container()
+                        with answer_box:
+                            st.session_state.user_answers[i] = st.text_area(
+                                "",
+                                value=st.session_state.user_answers[i],
+                                key=f"user_answer_{i}",
+                                height=120,
+                                placeholder="Type your answer here..."
+                            )
                         
                         if st.button(f"Evaluate Answer for Q{i+1}", key=f"evaluate_btn_{i}"):
                             if st.session_state.user_answers[i].strip():

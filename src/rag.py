@@ -49,10 +49,15 @@ class DocumentRag:
         Uses PersistentClient for local, file-based storage.
         Manages two collections: one for document chunks, one for chat metadata.
         """
-        # Initialize PersistentClient with a specified directory for all data
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        try:
+            self.client = chromadb.PersistentClient(path=persist_directory)
+            self.persist_directory = persist_directory
+        except Exception as e:
+            fallback_path = persist_directory + "_fallback"
+            os.makedirs(fallback_path, exist_ok=True)
+            self.client = chromadb.PersistentClient(path=fallback_path)
+            self.persist_directory = fallback_path
         self.embedding_function = SentenceTransformerChromaEmbeddingFunction()
-        self.persist_directory = persist_directory # Store for potential cleanup
 
         # Collection for document chunks and their embeddings
         self.document_chunks_collection = self.client.get_or_create_collection(
@@ -173,6 +178,32 @@ class DocumentRag:
         except Exception as e:
             print(f"Error saving chat metadata to ChromaDB: {e}")
 
+    def update_chat_metadata(self, chat_id: str, updates: Dict[str, Any]) -> bool:
+        """
+        Partially updates fields in chat metadata for the given chat_id.
+        Loads existing metadata, merges updates, and upserts back to ChromaDB.
+        Returns True on success, False otherwise.
+        """
+        try:
+            existing = self.load_chat_metadata(chat_id) or {"chat_id": chat_id}
+            # Merge updates (shallow merge is sufficient for our fields)
+            for k, v in updates.items():
+                existing[k] = v
+
+            data_to_save = existing.copy()
+            if 'ask_history' in data_to_save and isinstance(data_to_save['ask_history'], list):
+                data_to_save['ask_history'] = json.dumps(data_to_save['ask_history'])
+
+            self.chat_metadata_collection.upsert(
+                documents=[json.dumps(data_to_save)],
+                ids=[chat_id]
+            )
+            print(f"Updated chat metadata for '{chat_id}' with fields: {list(updates.keys())}")
+            return True
+        except Exception as e:
+            print(f"Error updating chat metadata for '{chat_id}': {e}")
+            return False
+
     def load_chat_metadata(self, chat_id: str) -> Dict[str, Any] | None:
         """
         Loads chat session metadata from the 'chat_metadata' ChromaDB collection.
@@ -195,7 +226,11 @@ class DocumentRag:
         Fetches all chat session metadata from the 'chat_metadata' ChromaDB collection.
         """
         try:
-            results = self.chat_metadata_collection.get(ids=self.chat_metadata_collection.get()['ids'])
+            existing = self.chat_metadata_collection.get()
+            ids = existing.get('ids', []) if isinstance(existing, dict) else []
+            if not ids:
+                return []
+            results = self.chat_metadata_collection.get(ids=ids)
             chats_list = []
             if results and results['documents']:
                 for doc_str in results['documents']:
